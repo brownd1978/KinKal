@@ -44,10 +44,17 @@ namespace KinKal {
       // parameters WRT which this hit's residual and weights are set.  These are generally biased
       // in that they contain the information of this hit
       Parameters const& referenceParameters() const { return referenceTrajectory().params(); }
-      // Unbiased parameters, taking out this hit's effect from the reference
+      // record the piece of a new fit trajectory at this hit's time: where the fit just applied this hit's weight.
+      // Call before updateReference moves the hit's reference, which can land on a different piece.
+      void setWeightReference(PTRAJ const& ptraj) { wtrajptr_ = ptraj.nearestTraj(time()); }
+      // the piece holding this hit's applied weight; the reference trajectory until one has been recorded.
+      KTRAJ const& weightTrajectory() const { return wtrajptr_ ? *wtrajptr_ : referenceTrajectory(); }
+      // Unbiased parameters WRT the reference, taking out this hit's effect where it was applied
       Parameters unbiasedParameters() const;
       // unbiased least-squares distance to reference parameters
       Chisq chisquared() const;
+    private:
+      KTRAJPTR wtrajptr_; // piece on which this hit's weight was applied.
   };
 
   // cloning requires domain knowledge of pointer members of the cloned object,
@@ -60,11 +67,16 @@ namespace KinKal {
 
   template<class KTRAJ> Parameters Hit<KTRAJ>::unbiasedParameters() const {
     if(active()){
-      // convert the parameters to a weight, and subtract this hit's weight
-      Weights wt(referenceParameters());
-      // subtract out the effect of this hit's reference weight from the reference parameters
+      // remove this hit's weight from the piece it was applied to: removing it from another piece, separated by
+      // material effects, over-subtracts and can leave a covariance that isn't positive definite.
+      auto const& wpars = weightTrajectory().params();
+      Weights wt(wpars);
       wt -= weight();
-      return Parameters(wt);
+      Parameters upars(wt);
+      // express the result WRT the reference: apply the parameter change from removing this hit to the reference
+      // parameters, keeping the unbiased covariance.  Identical to the plain subtraction when the pieces coincide
+      upars.parameters() += referenceParameters().parameters() - wpars.parameters();
+      return upars;
     } else
       return referenceParameters();
   }

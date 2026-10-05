@@ -66,6 +66,8 @@ namespace KinKal {
   }
 
   template<class KTRAJ> void Measurement<KTRAJ>::updateReference(PTRAJ const& ptraj) {
+    // the hit's current time is where the fit applied its weight; record that piece before the reference moves.
+    hit_->setWeightReference(ptraj);
     hit_->updateReference(ptraj);
   }
 
