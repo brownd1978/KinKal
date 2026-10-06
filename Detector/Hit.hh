@@ -11,6 +11,7 @@
 #include "KinKal/Trajectory/ParticleTrajectory.hh"
 #include "KinKal/Fit/MetaIterConfig.hh"
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <stdexcept>
 #include <string>
@@ -44,17 +45,22 @@ namespace KinKal {
       // parameters WRT which this hit's residual and weights are set.  These are generally biased
       // in that they contain the information of this hit
       Parameters const& referenceParameters() const { return referenceTrajectory().params(); }
-      // record the piece of a new fit trajectory at this hit's time: where the fit just applied this hit's weight.
-      // Call before updateReference moves the hit's reference, which can land on a different piece.
-      void setWeightReference(PTRAJ const& ptraj) { wtrajptr_ = ptraj.nearestTraj(time()); }
-      // the piece holding this hit's applied weight; the reference trajectory until one has been recorded.
-      KTRAJ const& weightTrajectory() const { return wtrajptr_ ? *wtrajptr_ : referenceTrajectory(); }
-      // Unbiased parameters WRT the reference, taking out this hit's effect where it was applied
-      Parameters unbiasedParameters() const;
+      // record the fit that was just run: the piece of its trajectory holding this hit's weight, and the weight and state applied
+      void snapshotWeight(KTRAJ const& wpiece);
+      // Unbiased parameters WRT the reference: this hit's weight removed from the piece it was applied to.  Computed once
+      // from the last snapshot and cached, so later state changes don't alter it.
+      Parameters const& unbiasedParameters() const;
       // unbiased least-squares distance to reference parameters
       Chisq chisquared() const;
     private:
-      KTRAJPTR wtrajptr_; // piece on which this hit's weight was applied.
+      struct WeightSnapshot {
+        Parameters wpars_; // parameters of the piece the weight was applied to
+        Weights weight_; // weight applied
+        bool active_; // state applied
+      };
+      std::optional<WeightSnapshot> wsnap_; // empty until the first snapshot (eg cloned hits)
+      mutable std::optional<Parameters> upars_; // cached unbiased parameters
+      mutable KTRAJPTR uref_; // reference trajectory the cache refers to
   };
 
   // cloning requires domain knowledge of pointer members of the cloned object,
@@ -65,20 +71,31 @@ namespace KinKal {
     throw std::runtime_error(msg);
   }
 
-  template<class KTRAJ> Parameters Hit<KTRAJ>::unbiasedParameters() const {
-    if(active()){
+  template<class KTRAJ> void Hit<KTRAJ>::snapshotWeight(KTRAJ const& wpiece) {
+    wsnap_ = WeightSnapshot{wpiece.params(), weight(), active()};
+    upars_.reset();
+  }
+
+  template<class KTRAJ> Parameters const& Hit<KTRAJ>::unbiasedParameters() const {
+    // recompute only after a new snapshot or if the reference moved without one
+    if(upars_ && uref_ == refTrajPtr()) return *upars_;
+    uref_ = refTrajPtr();
+    // without a snapshot, the weight is taken as applied to the reference
+    bool wactive = wsnap_ ? wsnap_->active_ : active();
+    if(wactive){
       // remove this hit's weight from the piece it was applied to: removing it from another piece, separated by
       // material effects, over-subtracts and can leave a covariance that isn't positive definite.
-      auto const& wpars = weightTrajectory().params();
+      Parameters const& wpars = wsnap_ ? wsnap_->wpars_ : referenceParameters();
       Weights wt(wpars);
-      wt -= weight();
+      wt -= wsnap_ ? wsnap_->weight_ : weight();
       Parameters upars(wt);
       // express the result WRT the reference: apply the parameter change from removing this hit to the reference
       // parameters, keeping the unbiased covariance.  Identical to the plain subtraction when the pieces coincide
       upars.parameters() += referenceParameters().parameters() - wpars.parameters();
-      return upars;
+      upars_ = upars;
     } else
-      return referenceParameters();
+      upars_ = referenceParameters();
+    return *upars_;
   }
 
   template<class KTRAJ> Chisq Hit<KTRAJ>::chisquared() const {

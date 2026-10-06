@@ -66,9 +66,10 @@ namespace KinKal {
   }
 
   template<class KTRAJ> void Measurement<KTRAJ>::updateReference(PTRAJ const& ptraj) {
-    // the hit's current time is where the fit applied its weight; record that piece before the reference moves.
-    hit_->setWeightReference(ptraj);
+    // the hit's current time is where the fit applied its weight, on the piece of the new trajectory at that time
+    double wtime = hit_->time();
     hit_->updateReference(ptraj);
+    hit_->snapshotWeight(ptraj.nearestPiece(wtime));
   }
 
   template<class KTRAJ> Chisq Measurement<KTRAJ>::chisq(Parameters const& pdata) const {
