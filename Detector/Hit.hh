@@ -49,6 +49,7 @@ namespace KinKal {
       void snapshotWeight(KTRAJ const& wpiece);
       // Unbiased parameters WRT the reference: this hit's weight removed from the piece it was applied to.  Computed once
       // from the last snapshot and cached, so later state changes don't alter it.
+      // Describe the fit that produced the current reference; decided one fit cycle earlier.
       Parameters const& unbiasedParameters() const;
       // unbiased least-squares distance to reference parameters
       Chisq chisquared() const;
