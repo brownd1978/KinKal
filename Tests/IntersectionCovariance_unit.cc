@@ -82,7 +82,7 @@ template <class KTRAJ, class SURF, class INTERF> int testCovariance(std::string 
   }
   // consistency with the trajectory planeCovariance function, using the local tangent plane
   auto tplane = surf.tangentPlane(inter.pos_);
-  auto tcov = ktraj.planeCovariance(inter.time_,tplane);
+  auto tcov = ktraj.planeCovariance(inter.time_,tplane,1.0e-10);
   for(int irow=0;irow<2;++irow){
     for(int icol=0;icol<2;++icol){
       if(fabs(tcov(irow,icol)-pcov(irow,icol)) > ctol*sqrt(pcov(0,0)*pcov(1,1))){
@@ -171,7 +171,7 @@ int main(int argc, char** argv) {
   CentralHelix chelix(pos,mom,-1,bnom,trange);
   setCovariance(chelix,{0.3,0.002,1.0e-5,0.3,0.001,0.05});
   KinematicLine kline(pos,mom,-1,bnom,trange);
-  setCovariance(kline,{0.1,0.1,0.0005,0.0005,0.005,0.05});
+  setCovariance(kline,{0.1,0.002,0.1,0.002,0.005,0.05}); // d0, phi0, z0, theta, t0, mom
 
   auto inter = [&](auto const& ktraj, auto const& surf, TimeRange const& range, bool pcov) { return intersect(ktraj,surf,range,tol,TimeDir::forwards,pcov); };
 

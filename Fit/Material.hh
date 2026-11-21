@@ -103,6 +103,9 @@ namespace KinKal {
     if((tdir == TimeDir::forwards && ptraj.back().range().begin() > time()) ||
         (tdir == TimeDir::backwards && ptraj.front().range().end() < time()) )
       throw std::invalid_argument("Material: Can't append piece");
+    // an inactive xing (ie an out-of-bounds crossing) has no effect: don't split the trajectory.  As with process and append,
+    // it is still kept as an effect, and will contribute if it becomes active when the track is refit
+    if(!exingptr_->active()) return;
     auto ktrajptr = ptraj.nearestTraj(time());
     // convert parameters at this material to momentum space representation
     auto pstate = ktrajptr->stateEstimate(time());

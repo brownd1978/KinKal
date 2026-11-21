@@ -81,7 +81,7 @@ namespace KinKal {
       double momentum(double time=0) const  { return  mass_*betaGamma(); }
       double momentumVariance(double time=0) const;
       double positionVariance(double time,MomBasis::Direction dir) const;
-      PMAT planeCovariance(double time,Plane const& plane) const;
+      PMAT planeCovariance(double time,Plane const& plane, double dirtol) const;
       double energy(double time=0) const  { return  fabs(ebar()*Q()); }
       VEC3 direction(double time, MomBasis::Direction mdir= MomBasis::momdir_) const;
       double mass() const { return mass_;} // mass

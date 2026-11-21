@@ -42,7 +42,7 @@ template <class KTRAJ> void setCovariance(KTRAJ& ktraj, std::array<double,6> con
 
 double normcdf(double x) { return 0.5*erfc(-x/sqrt(2.0)); }
 
-static const double tol(1.0e-6);
+static const double tol(1.0e-3); // intersection tolerance (mm): small compared to the projected errors (~1 mm), and keeps the toy MC fast
 static const double fractol(0.01); // the target precision of inbfrac_
 static const double toytol(0.015); // tolerance on the toy MC comparison: target precision plus statistics
 

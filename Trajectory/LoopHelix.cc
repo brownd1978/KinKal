@@ -133,14 +133,15 @@ namespace KinKal {
     return ROOT::Math::Similarity(dxdp,params().covariance());
   }
 
-  PMAT LoopHelix::planeCovariance(double time,Plane const& plane) const {
+  PMAT LoopHelix::planeCovariance(double time,Plane const& plane, double dirtol) const {
     // project the spatial covariance onto the U, V directions of the given plane.  The projection is
     // along the particle direction, so the result describes the covariance of the point where the trajectory
-    // crosses the plane. This includes the effect of the t0 (and other) errors on the position along the trajectory.
-    // The particle direction cannot lie in the plane
+    // crosses the plane. Errors that displace the position along the particle direction (such as the t0 error) drop out of
+    // this linear projection.  The particle direction cannot lie in the plane: |cos| of the angle between the direction and
+    // the plane normal must exceed dirtol
     auto momdir = direction(time);
     double ndot = plane.normal().Dot(momdir);
-    if(fabs(ndot) < 1.0e-10)throw invalid_argument("Momentum direction lies in the plane");
+    if(fabs(ndot) < dirtol)throw invalid_argument("Momentum direction lies in the plane");
     // a perturbation dx moves the crossing point by dx - momdir*(norm.dx)/(norm.momdir)
     auto uproj = plane.uDirection() - plane.normal()*(plane.uDirection().Dot(momdir)/ndot);
     auto vproj = plane.vDirection() - plane.normal()*(plane.vDirection().Dot(momdir)/ndot);

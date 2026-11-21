@@ -329,7 +329,7 @@ int TrajectoryTest(int argc, char **argv,KinKal::DVEC sigmas) {
   auto momdir = ktraj.direction(ltime);
   auto udir = ktraj.direction(ltime,MomBasis::perpdir_);
   Plane plane(momdir,udir,ppos);
-  auto pcov = ktraj.planeCovariance(ltime,plane);
+  auto pcov = ktraj.planeCovariance(ltime,plane,1.0e-10);
 //  cout << "Plane covariance " << pcov << endl;
 
   if(fabs(pcov(0,0) - pperpvar) > 1e-9 ||

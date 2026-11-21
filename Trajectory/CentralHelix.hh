@@ -75,7 +75,7 @@ namespace KinKal {
       double momentum(double time=0) const  { return fabs(mass_ * pbar() / mbar()); }
       double momentumVariance(double time=0) const;
       double positionVariance(double time,MomBasis::Direction dir) const;
-      PMAT planeCovariance(double time,Plane const& plane) const;
+      PMAT planeCovariance(double time,Plane const& plane, double dirtol) const;
       double energy(double time=0) const  { return fabs(mass_ * ebar() / mbar()); }
       // local momentum direction basis
       void print(std::ostream& ost, int detail) const;

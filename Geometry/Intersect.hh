@@ -112,13 +112,14 @@ namespace KinKal {
   //
   // fill the projection of the trajectory spatial covariance onto the local plane of an onsurface intersection.
   // The projection (see KTRAJ::planeCovariance) is along the trajectory direction, so it describes the covariance of where the trajectory crosses the plane.
-  // If the trajectory is (nearly) parallel to the plane the projection is singular: the covariance is left 0 and hascov_ false.
+  // If the trajectory is (nearly) parallel to the plane (|cos| of the angle between the trajectory direction and the plane normal below dirtol)
+  // the projection is singular: the covariance is left 0 and hascov_ false.
   // This is optional as the projection is relatively expensive; intersect calls it only on request (pcov argument), and only on the final intersection.
   // Only the position, time, and onsurface_ (and inbounds_, used if the covariance is degenerate) of the intersection are used as input:
   // the local frame (norm_, udir_, vdir_) is (re)filled here from the surface tangent plane at the intersection position, so this can
   // also be called on intersections constructed outside of the intersect functions.
   //
-  template <class KTRAJ> void fillPlaneCovariance(KTRAJ const& ktraj, Surface const& surf, Intersection& inter, double tol) {
+  template <class KTRAJ> void fillPlaneCovariance(KTRAJ const& ktraj, Surface const& surf, Intersection& inter, double tol, double dirtol=1.0e-10) {
     inter.pcov_ = PMAT();
     inter.hascov_ = false;
     inter.inbfrac_ = 0.0;
@@ -128,9 +129,9 @@ namespace KinKal {
     inter.udir_ = tplane.uDirection();
     inter.vdir_ = tplane.vDirection();
     // the projection is singular if the trajectory lies in the plane
-    if(fabs(inter.norm_.Dot(ktraj.direction(inter.time_))) < 1.0e-10) return;
+    if(fabs(inter.norm_.Dot(ktraj.direction(inter.time_))) < dirtol) return;
     Plane plane(inter.norm_,inter.udir_,inter.pos_);
-    inter.pcov_ = ktraj.planeCovariance(inter.time_,plane);
+    inter.pcov_ = ktraj.planeCovariance(inter.time_,plane,dirtol);
     inter.hascov_ = true;
     inter.inbfrac_ = boundsFraction(surf,inter,tol);
   }
@@ -288,8 +289,9 @@ namespace KinKal {
     // note we don't know the orientation of the trajectory WRT the axis so we have to try both
     auto frontinter = hpIntersect(helix,surf.frontDisk(),trange,tol,tdir);
     auto backinter = hpIntersect(helix,surf.backDisk(),trange,tol,tdir);
-    if(trange.inRange(frontinter.time_))times.push_back(frontinter.time_);
-    if(trange.inRange(backinter.time_))times.push_back(backinter.time_);
+    // a failed disk search leaves time_ at 0, so require the disk intersection be on the surface
+    if(frontinter.onsurface_ && trange.inRange(frontinter.time_))times.push_back(frontinter.time_);
+    if(backinter.onsurface_ && trange.inRange(backinter.time_))times.push_back(backinter.time_);
     if(times.size() >=2){
       TimeRange srange(*std::min_element(times.begin(),times.end()),*std::max_element(times.begin(),times.end()));
       // intersection is possible: step within the restricted range

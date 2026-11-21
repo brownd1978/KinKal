@@ -279,7 +279,7 @@ int ParticleTrajectoryTest(int argc, char **argv) {
   if(kc_inter.good()){
     auto kc3_inter = intersect(ptraj,csurf, ptraj.range(), 1.0e-8,TimeDir::forwards,true);
     Plane tplane(kc3_inter.norm_,kc3_inter.udir_,kc3_inter.pos_);
-    auto tcov = ptraj.nearestPiece(kc3_inter.time_).planeCovariance(kc3_inter.time_,tplane);
+    auto tcov = ptraj.nearestPiece(kc3_inter.time_).planeCovariance(kc3_inter.time_,tplane,1.0e-10);
     if(!kc3_inter.hascov_ || kc3_inter.time_ != kc_inter.time_ || kc3_inter.pcov_ != tcov){
       std::cout << "Plane covariance inconsistent " << kc3_inter << " " << kc3_inter.pcov_ << " " << tcov << std::endl;
       return -2;
