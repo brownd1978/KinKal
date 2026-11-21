@@ -16,6 +16,8 @@
 #include "KinKal/General/TimeDir.hh"
 #include "Math/VectorUtil.h"
 #include <iostream>
+#include <functional>
+#include <algorithm>
 namespace KinKal {
   //
   // fill the local plane (tangent to the surface at the intersection) UV system. This is cheap, and is done for every onsurface intersection
@@ -26,20 +28,111 @@ namespace KinKal {
     inter.vdir_ = plane.vDirection();
   }
   //
+  // Is the point at local plane coordinates (u,v) of an intersection within the surface boundaries?  The point is projected onto the
+  // surface along the normal at the intersection; points that don't project onto the surface are out of bounds.
+  //
+  inline bool planePointInBounds(Surface const& surf, Intersection const& inter, double u, double v, double tol) {
+    VEC3 ppos = inter.pos_ + u*inter.udir_ + v*inter.vdir_;
+    double dist(0.0);
+    auto sinter = surf.intersect(Ray(inter.norm_,ppos),dist,false,tol); // closest projection in either direction
+    return sinter.onsurface_ && sinter.inbounds_;
+  }
+  //
+  // Fraction of the 2D Gaussian with covariance pcov_ centered on the intersection that lies within the surface boundaries.
+  // The integral is done in whitened coordinates (where the Gaussian is circular) as an angular integral over rays from the center.
+  // Along each ray the boundary crossings are found by stepping (in units of sigma) out to rmax and refining by bisection; the Gaussian
+  // mass in each inside segment [r1,r2] is exp(-r1^2/2)-exp(-r2^2/2).  A ray that is inside at rmax is taken to be inside to infinity.
+  // The angular integral uses the trapezoid rule on nsector equal sectors.  Sectors whose end rays differ by more than angtol (ie that
+  // contain a boundary corner, or where a boundary passes close to the center) are bisected, up to maxdepth times.
+  // This handles any number of edges (corners, holes) generically.  Boundary features narrower than rstep sigma, or angular features
+  // narrower than a sector (2pi/nsector) that don't change the end rays, can be missed.
+  //
+  inline double boundsFraction(Surface const& surf, Intersection const& inter, double tol,
+      unsigned nsector=32, unsigned maxdepth=4, double angtol=0.02, double rmax=5.0, double rstep=0.25, double rtol=1.0e-3) {
+    auto const& cov = inter.pcov_;
+    // Cholesky decomposition cov = L L^T
+    double l00 = cov(0,0) > 0.0 ? sqrt(cov(0,0)) : 0.0;
+    double l10 = l00 > 0.0 ? cov(0,1)/l00 : 0.0;
+    double l11sq = cov(1,1) - l10*l10;
+    // degenerate covariance: the answer is the bounds state of the center
+    if(l00 <= 0.0 || l11sq <= 0.0) return inter.inbounds_ ? 1.0 : 0.0;
+    double l11 = sqrt(l11sq);
+    auto mass = [](double r) { return exp(-0.5*r*r); }; // Gaussian mass outside whitened radius r
+    bool cinside = planePointInBounds(surf,inter,0.0,0.0,tol);
+    // Gaussian mass inside the boundaries along the ray at whitened angle phi, normalized to 1 for a fully-inside ray
+    auto rayfrac = [&](double phi) {
+      double du = l00*cos(phi); // ray direction in UV for unit whitened radius
+      double dv = l10*cos(phi) + l11*sin(phi);
+      auto inb = [&](double r) { return planePointInBounds(surf,inter,r*du,r*dv,tol); };
+      bool inside = cinside;
+      double rin = 0.0; // start of the current inside segment
+      double r0 = 0.0;
+      double retval(0.0);
+      while(r0 < rmax){
+        double r1 = std::min(r0 + rstep,rmax);
+        bool in1 = inb(r1);
+        if(in1 != inside){
+          // bisect to find the crossing
+          double ra(r0), rb(r1);
+          while(rb - ra > rtol){
+            double rm = 0.5*(ra+rb);
+            if(inb(rm) == inside) ra = rm; else rb = rm;
+          }
+          double rc = 0.5*(ra+rb);
+          if(inside) retval += mass(rin) - mass(rc); // leaving
+          else rin = rc; // entering
+          inside = in1;
+        }
+        r0 = r1;
+      }
+      if(inside) retval += mass(rin); // inside to infinity
+      return retval;
+    };
+    // adaptive trapezoid integration over a sector, given the ray fractions at its ends
+    std::function<double(double,double,double,double,unsigned)> sector = [&](double phi0, double phi1, double f0, double f1, unsigned depth) {
+      if(depth < maxdepth && fabs(f0-f1) > angtol){
+        double phim = 0.5*(phi0+phi1);
+        double fm = rayfrac(phim);
+        return sector(phi0,phim,f0,fm,depth+1) + sector(phim,phi1,fm,f1,depth+1);
+      }
+      return 0.5*(f0+f1)*(phi1-phi0);
+    };
+    double frac(0.0);
+    double dsec = 2.0*M_PI/nsector;
+    double f0 = rayfrac(0.0);
+    double fprev = f0;
+    for(unsigned isec=0; isec < nsector; ++isec){
+      double phi0 = isec*dsec;
+      double fnext = isec+1 < nsector ? rayfrac(phi0+dsec) : f0; // periodic
+      frac += sector(phi0,phi0+dsec,fprev,fnext,0);
+      fprev = fnext;
+    }
+    return std::clamp(frac/(2.0*M_PI),0.0,1.0);
+  }
+  //
   // fill the projection of the trajectory spatial covariance onto the local plane of an onsurface intersection.
   // The projection (see KTRAJ::planeCovariance) is along the trajectory direction, so it describes the covariance of where the trajectory crosses the plane.
   // If the trajectory is (nearly) parallel to the plane the projection is singular: the covariance is left 0 and hascov_ false.
   // This is optional as the projection is relatively expensive; intersect calls it only on request (pcov argument), and only on the final intersection.
+  // Only the position, time, and onsurface_ (and inbounds_, used if the covariance is degenerate) of the intersection are used as input:
+  // the local frame (norm_, udir_, vdir_) is (re)filled here from the surface tangent plane at the intersection position, so this can
+  // also be called on intersections constructed outside of the intersect functions.
   //
-  template <class KTRAJ> void fillPlaneCovariance(KTRAJ const& ktraj, Intersection& inter) {
+  template <class KTRAJ> void fillPlaneCovariance(KTRAJ const& ktraj, Surface const& surf, Intersection& inter, double tol) {
     inter.pcov_ = PMAT();
     inter.hascov_ = false;
+    inter.inbfrac_ = 0.0;
     if(!inter.onsurface_) return;
+    auto tplane = surf.tangentPlane(inter.pos_);
+    inter.norm_ = tplane.normal();
+    inter.udir_ = tplane.uDirection();
+    inter.vdir_ = tplane.vDirection();
     // the projection is singular if the trajectory lies in the plane
     if(fabs(inter.norm_.Dot(ktraj.direction(inter.time_))) < 1.0e-10) return;
     Plane plane(inter.norm_,inter.udir_,inter.pos_);
     inter.pcov_ = ktraj.planeCovariance(inter.time_,plane);
     inter.hascov_ = true;
+    inter.inbfrac_ = boundsFraction(surf,inter,tol);
   }
   //
   // generic intersection implementation based on stepping across the surface within a given range in the given time direction.
@@ -174,50 +267,54 @@ namespace KinKal {
     return std::max(dbeg - drad(rfbeg), dend - drad(rfend)) > -tol - slack;
   }
 
-  template < class HELIX> Intersection hcIntersect( HELIX const& helix, KinKal::Cylinder const& cyl, TimeRange trange ,double tol,TimeDir tdir = TimeDir::forwards) {
+  //
+  // Helix and a bounded surface of revolution (cylinder or frustrum) whose axis is roughly co-linear with the helix axis.
+  // The search is first restricted to the time range where the helix is within the surface axial bounds, using the end disk crossings.
+  // If no in-bounds crossing is found there, the first crossing over the full range is returned, flagged as out-of-bounds.
+  //
+  template <class HELIX, class SURF> Intersection hbIntersect( HELIX const& helix, SURF const& surf, TimeRange trange ,double tol,TimeDir tdir) {
     Intersection retval;
-    // test if the range is lnger than the radius. If so, make an axial approximation
-    double rbend = fabs(helix.bendRadius());
-    // compare directions and divide into cases
-    double ddot = fabs(helix.bnom().Unit().Dot(cyl.axis()));
-    if(rbend < trange.range()*helix.transverseSpeed() && ddot > 0.9) { // mostly co-linear
-      // the helix and cylinder are roughly co-linear, and the helix loops within this range
-      // first try to limit the range using disk-axis intersections
-      // see if the range is in bounds
-      auto binb = cyl.inBounds(helix.position3(trange.begin()),tol);
-      auto einb = cyl.inBounds(helix.position3(trange.end()),tol);
-      if(binb && einb) {
-        // both in bounds: use this range
-        if(canIntersect(helix,cyl,trange,tol)){
-          retval = stepIntersect(helix,cyl,trange,tol,tdir);
-        }
-      } else {
-        // create a list of times to select the most restrictive range
-        std::vector<double>times;
-        if(binb)times.push_back(trange.begin());
-        if(einb)times.push_back(trange.end());
-        // find the intersections with the front and back disks.  Use those to refine the range
-        // note we don't know the orientation of the trajectory WRT the axis so we have to try both
-        auto frontdisk = cyl.frontDisk();
-        auto backdisk = cyl.backDisk();
-        auto frontinter = hpIntersect(helix,frontdisk,trange,tol,tdir);
-        auto backinter = hpIntersect(helix,backdisk,trange,tol,tdir);
-        if(trange.inRange(frontinter.time_))times.push_back(frontinter.time_);
-        if(trange.inRange(backinter.time_))times.push_back(backinter.time_);
-        if(times.size() >=2){
-          TimeRange srange(*std::min_element(times.begin(),times.end()),*std::max_element(times.begin(),times.end()));
-          // intersection is possible: step within the restricted range
-          if(canIntersect(helix,cyl,srange,tol)){
-            retval = stepIntersect(helix,cyl,srange,tol,tdir);
-            if(retval.onsurface_) retval.inrange_ = trange.inRange(retval.time_); // report against the caller's range, not the restricted one
-          }
+    // canIntersect is monotonic in the range: if it fails for the full range it fails for any sub-range
+    if(!canIntersect(helix,surf,trange,tol)) return retval;
+    auto binb = surf.inBounds(helix.position3(trange.begin()),tol);
+    auto einb = surf.inBounds(helix.position3(trange.end()),tol);
+    // both ends in bounds: use the full range
+    if(binb && einb) return stepIntersect(helix,surf,trange,tol,tdir);
+    // create a list of times to select the most restrictive range
+    std::vector<double>times;
+    if(binb)times.push_back(trange.begin());
+    if(einb)times.push_back(trange.end());
+    // find the intersections with the front and back disks.  Use those to refine the range
+    // note we don't know the orientation of the trajectory WRT the axis so we have to try both
+    auto frontinter = hpIntersect(helix,surf.frontDisk(),trange,tol,tdir);
+    auto backinter = hpIntersect(helix,surf.backDisk(),trange,tol,tdir);
+    if(trange.inRange(frontinter.time_))times.push_back(frontinter.time_);
+    if(trange.inRange(backinter.time_))times.push_back(backinter.time_);
+    if(times.size() >=2){
+      TimeRange srange(*std::min_element(times.begin(),times.end()),*std::max_element(times.begin(),times.end()));
+      // intersection is possible: step within the restricted range
+      if(canIntersect(helix,surf,srange,tol)){
+        retval = stepIntersect(helix,surf,srange,tol,tdir);
+        if(retval.onsurface_ && retval.inbounds_){
+          retval.inrange_ = trange.inRange(retval.time_); // report against the caller's range, not the restricted one
+          return retval;
         }
       }
-    } else {
-      // intermediate case: use step intersection
-      retval = stepIntersect(helix,cyl,trange,tol,tdir);
     }
-    return retval;
+    // no in-bounds crossing: return the first crossing in the full range, which will be out-of-bounds (or none)
+    return stepIntersect(helix,surf,trange,tol,tdir);
+  }
+  //
+  // Helix and cylinder
+  //
+  template < class HELIX> Intersection hcIntersect( HELIX const& helix, KinKal::Cylinder const& cyl, TimeRange trange ,double tol,TimeDir tdir = TimeDir::forwards) {
+    double rbend = fabs(helix.bendRadius());
+    double ddot = fabs(helix.bnom().Unit().Dot(cyl.axis()));
+    // the helix and cylinder are roughly co-linear, and the helix loops within this range
+    if(rbend < trange.range()*helix.transverseSpeed() && ddot > 0.9)
+      return hbIntersect(helix,cyl,trange,tol,tdir);
+    // intermediate case: use step intersection
+    return stepIntersect(helix,cyl,trange,tol,tdir);
   }
   //
   // Helix and planar surfaces
@@ -273,48 +370,12 @@ namespace KinKal {
   //  Helix and frustrum
   //
   template < class HELIX> Intersection hfIntersect( HELIX const& helix, KinKal::Frustrum const& fru, TimeRange trange ,double tol,TimeDir tdir = TimeDir::forwards) {
-    Intersection retval;
     double ddot = fabs(helix.bnom().Unit().Dot(fru.axis()));
-    if (ddot > 0.9) { // I need a more physical co-linear test TODO
-      // the helix and frustrum are roughly co-linear.
-      // see if the range is in bounds
-      auto binb = fru.inBounds(helix.position3(trange.begin()),tol);
-      auto einb = fru.inBounds(helix.position3(trange.end()),tol);
-      if(binb && einb) {
-        // both in bounds: use this range
-        if(canIntersect(helix,fru,trange,tol)) {
-          retval  = stepIntersect(helix,fru,trange,tol,tdir);
-        }
-      } else {
-        // create a list of times to select the most restrictive range
-        std::vector<double>times;
-        if(binb)times.push_back(trange.begin());
-        if(einb)times.push_back(trange.end());
-        // find the intersections with the front and back disks.  Use those to refine the range
-        // note we don't know the orientation of the trajectory WRT the axis so we have to try both
-        auto frontdisk = fru.frontDisk();
-        auto backdisk = fru.backDisk();
-        auto frontinter = hpIntersect(helix,frontdisk,trange,tol);
-        auto backinter = hpIntersect(helix,backdisk,trange,tol);
-        if(trange.inRange(frontinter.time_))times.push_back(frontinter.time_);
-        if(trange.inRange(backinter.time_))times.push_back(backinter.time_);
-        if(times.size() >=2){
-          TimeRange srange(*std::min_element(times.begin(),times.end()),*std::max_element(times.begin(),times.end()));
-          // intersection is possible: step within the restricted range
-          if(canIntersect(helix,fru,srange,tol) ) {
-            retval = stepIntersect(helix,fru,srange,tol,tdir);
-            if(retval.onsurface_) retval.inrange_ = trange.inRange(retval.time_); // report against the caller's range, not the restricted one
-          }
-        }
-      }
-      //    } else if (ddot < 0.1) {
-      //      // the helix and frustrum are mostly orthogonal, use POCA to the axis to find an initial estimate, then do a linear search
-      //      // TODO. Construct a KinematicLine object from the helix axis, and a GeometricLine from the frustrum, then invoke POCA.
-  } else {
+    // the helix and frustrum are roughly co-linear.  I need a more physical co-linear test TODO
+    // For the mostly orthogonal case (ddot < 0.1), POCA of the helix axis to the frustrum axis could provide an initial estimate TODO
+    if (ddot > 0.9) return hbIntersect(helix,fru,trange,tol,tdir);
     // intermediate case: use step intersection
-    retval  = stepIntersect(helix,fru,trange,tol,tdir);
-  }
-  return retval;
+    return stepIntersect(helix,fru,trange,tol,tdir);
   }
   //
   // Tie intersect to the explicit helix implementations.
@@ -322,32 +383,32 @@ namespace KinKal {
   //
   Intersection intersect( LoopHelix const& lhelix, KinKal::Cylinder const& cyl, TimeRange trange ,double tol,TimeDir tdir = TimeDir::forwards, bool pcov=false) {
     auto retval = hcIntersect(lhelix,cyl,trange,tol,tdir);
-    if(pcov)fillPlaneCovariance(lhelix,retval);
+    if(pcov)fillPlaneCovariance(lhelix,cyl,retval,tol);
     return retval;
   }
   Intersection intersect( CentralHelix const& chelix, KinKal::Cylinder const& cyl, TimeRange trange ,double tol,TimeDir tdir = TimeDir::forwards, bool pcov=false) {
     auto retval = hcIntersect(chelix,cyl,trange,tol,tdir);
-    if(pcov)fillPlaneCovariance(chelix,retval);
+    if(pcov)fillPlaneCovariance(chelix,cyl,retval,tol);
     return retval;
   }
   Intersection intersect( LoopHelix const& lhelix, KinKal::Plane const& plane, TimeRange trange ,double tol,TimeDir tdir = TimeDir::forwards, bool pcov=false) {
     auto retval = hpIntersect(lhelix,plane,trange,tol,tdir);
-    if(pcov)fillPlaneCovariance(lhelix,retval);
+    if(pcov)fillPlaneCovariance(lhelix,plane,retval,tol);
     return retval;
   }
   Intersection intersect( CentralHelix const& chelix, KinKal::Plane const& plane, TimeRange trange ,double tol,TimeDir tdir = TimeDir::forwards, bool pcov=false) {
     auto retval = hpIntersect(chelix,plane,trange,tol,tdir);
-    if(pcov)fillPlaneCovariance(chelix,retval);
+    if(pcov)fillPlaneCovariance(chelix,plane,retval,tol);
     return retval;
   }
   Intersection intersect( LoopHelix const& lhelix, KinKal::Frustrum const& fru, TimeRange trange ,double tol,TimeDir tdir = TimeDir::forwards, bool pcov=false) {
     auto retval = hfIntersect(lhelix,fru,trange,tol,tdir);
-    if(pcov)fillPlaneCovariance(lhelix,retval);
+    if(pcov)fillPlaneCovariance(lhelix,fru,retval,tol);
     return retval;
   }
   Intersection intersect( CentralHelix const& chelix, KinKal::Frustrum const& fru, TimeRange trange ,double tol,TimeDir tdir = TimeDir::forwards, bool pcov=false) {
     auto retval = hfIntersect(chelix,fru,trange,tol,tdir);
-    if(pcov)fillPlaneCovariance(chelix,retval);
+    if(pcov)fillPlaneCovariance(chelix,fru,retval,tol);
     return retval;
   }
   //
@@ -369,7 +430,7 @@ namespace KinKal {
       retval.time_ = tstart + dist*timeDirSign(tdir)/kkline.speed(tstart);
       retval.pdir_ = kkline.direction(retval.time_);
       fillPlaneFrame(surf,retval);
-      if(pcov)fillPlaneCovariance(kkline,retval);
+      if(pcov)fillPlaneCovariance(kkline,surf,retval,tol);
     }
     // check the final time to be in range;
     retval.inrange_ = trange.inRange(retval.time_);

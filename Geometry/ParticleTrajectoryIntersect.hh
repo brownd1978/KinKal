@@ -47,7 +47,7 @@ namespace KinKal {
             auto tinter = intersect(*ttraj,surf,srange,tol,tdir);
             if(tinter.good()){
               retval = tinter;
-              if(pcov)fillPlaneCovariance(*ttraj,retval);
+              if(pcov)fillPlaneCovariance(*ttraj,surf,retval,tol);
               break;
             }
           }

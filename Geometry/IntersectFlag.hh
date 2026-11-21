@@ -14,6 +14,7 @@ namespace KinKal {
     bool inbounds_ = false;  // intersection is inside the surface boundaries
     bool inrange_ = false;  // intersection is inside the time range
     bool hascov_ = false; // the projected spatial covariance (Intersection::pcov_) is filled. This is optional, and independent of good()
+    bool gap_ = false; // intersection is in a piecewise-trajectory gap
     bool operator ==(IntersectFlag const& other) const { return other.onsurface_ == onsurface_ && other.inbounds_ == inbounds_ && other.inrange_ == inrange_ && other.hascov_ == hascov_;}
     bool operator !=(IntersectFlag const& other) const { return other.onsurface_ != onsurface_ || other.inbounds_ != inbounds_ || other.inrange_ != inrange_ || other.hascov_ != hascov_;}
     bool good() const { return onsurface_ && inbounds_ && inrange_; }
