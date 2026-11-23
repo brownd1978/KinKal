@@ -14,6 +14,7 @@
 #include "KinKal/Geometry/Cylinder.hh"
 #include "KinKal/Geometry/Frustrum.hh"
 #include <iostream>
+#include <type_traits>
 #include <string>
 #include <random>
 #include <cmath>
@@ -47,9 +48,10 @@ static const double fractol(0.01); // the target precision of inbfrac_
 static const double toytol(0.015); // tolerance on the toy MC comparison: target precision plus statistics
 
 // compare the bounds fraction with the toy MC fraction of in-bounds intersections, and optionally an analytic expectation (if >= 0).
+// Out-of-bounds crossings are requested (oob=true), so that crossings just past a cylinder or frustrum end are reported and counted.
 template <class KTRAJ, class SURF> int testBounds(std::string const& name, KTRAJ const& ktraj, SURF const& surf,
     TimeRange const& trange, double expect, unsigned ntoy, unsigned seed, int verbose) {
-  auto inter = intersect(ktraj,surf,trange,tol,TimeDir::forwards,true);
+  auto inter = intersect(ktraj,surf,trange,tol,TimeDir::forwards,true,true);
   if(!inter.onsurface_ || !inter.hascov_){
     cout << name << ": no intersection covariance " << inter << endl;
     return -1;
@@ -86,7 +88,7 @@ template <class KTRAJ, class SURF> int testBounds(std::string const& name, KTRAJ
     for(size_t ipar=0;ipar < NParams(); ++ipar)
       pars.parameters()[ipar] += gauss(gen)*sqrt(ktraj.params().covariance()(ipar,ipar));
     KTRAJ toytraj(pars,ktraj);
-    auto toyinter = intersect(toytraj,surf,toyrange,tol);
+    auto toyinter = intersect(toytraj,surf,toyrange,tol,TimeDir::forwards,false,true);
     if(!toyinter.onsurface_) continue;
     ++nsurf;
     if(toyinter.inbounds_) ++ninb;
@@ -186,6 +188,22 @@ template <class KTRAJ> int testCurved(std::string const& tname, KTRAJ const& ktr
   for(double dsig : {-1.0, 0.0, 0.5, 1.5}){
     // place the cylinder so its +z end is dsig sigma from the intersection
     Cylinder cyl(zdir,VEC3(0.0,0.0,inter.pos_.Z()+dsig*sz-hlen),rcyl,hlen);
+    // helix only (KinematicLine always reports the first crossing): by default (oob=false) an out-of-bounds crossing
+    // is not reported; with oob=true it is, flagged out-of-bounds
+    if constexpr (!std::is_same_v<KTRAJ,KinematicLine>){
+      auto definter = intersect(ktraj,cyl,crange,tol);
+      if(definter.onsurface_ && !definter.inbounds_){
+        cout << tname << " Cylinder end at " << dsig << " sigma: out-of-bounds crossing returned by default " << definter << endl;
+        status |= -1;
+      }
+      if(dsig < 0.0){
+        auto oobinter = intersect(ktraj,cyl,crange,tol,TimeDir::forwards,false,true);
+        if(definter.onsurface_ || !oobinter.onsurface_ || oobinter.inbounds_){
+          cout << tname << " Cylinder end at " << dsig << " sigma: wrong oob behavior, default " << definter << " oob " << oobinter << endl;
+          status |= -1;
+        }
+      }
+    }
     status |= testBounds(tname+" Cylinder end at "+std::to_string(dsig)+" sigma",ktraj,cyl,crange,normcdf(dsig),ntoy,seed,verbose);
   }
   // frustrum through the same point, with its +z end near the intersection.  The boundary projection is not exactly axial here
