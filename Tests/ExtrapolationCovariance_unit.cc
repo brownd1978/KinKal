@@ -55,8 +55,8 @@ namespace {
           truth += isign*(tr1.params().parameters()-tr2.params().parameters())/(2*eps);
         }
         double scale = 1e-6;
-        for(int ipar=0;ipar<NParams();ipar++) scale = std::max(scale,fabs(truth[ipar]));
-        for(int ipar=0;ipar<NParams();ipar++)
+        for(size_t ipar=0;ipar<NParams();ipar++) scale = std::max(scale,fabs(truth[ipar]));
+        for(size_t ipar=0;ipar<NParams();ipar++)
           maxdiff = std::max(maxdiff,fabs(dpdb(ipar,k)-truth[ipar])/scale);
       }
       std::cout << name << " tilt " << tilt << " dPardBdB max relative difference to rebuild " << maxdiff << std::endl;
@@ -130,7 +130,7 @@ namespace {
     TRandom3 rng(23);
     double sx(0),sy(0),sxx(0),syy(0),sxy(0); int nsample(0);
     for(int isample=0;isample<2000;isample++){
-      DVEC gaus; for(int ipar=0;ipar<NParams();ipar++) gaus[ipar] = rng.Gaus();
+      DVEC gaus; for(size_t ipar=0;ipar<NParams();ipar++) gaus[ipar] = rng.Gaus();
       KTRAJ sample(seed);
       sample.params().parameters() += lmat*gaus;
       sample.params().covariance() = DMAT(); // covariance isn't used
