@@ -11,6 +11,7 @@ set( TEST_SOURCE_FILES
     CentralHelixPKTraj_unit.cc
     CentralHelix_unit.cc
     ConstantDistanceToTime_unit.cc
+    ExtrapolationCovariance_unit.cc
     KinematicLineClosestApproach_unit.cc
     KinematicLineBField_unit.cc
     KinematicLineDerivs_unit.cc

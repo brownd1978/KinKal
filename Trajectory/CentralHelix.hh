@@ -137,6 +137,7 @@ namespace KinKal {
       // Parameter derivatives given a change in BFieldMap
       DVEC dPardB(double time) const;
       DVEC dPardB(double time, VEC3 const& BPrime) const;
+      DPDV dPardBdB(double time) const; // linear Jacobian of dPardB: parameter change per (global) BField vector change, with the state at time fixed
       PSMAT dPardPardB(double time,VEC3 const& db) const; // Parameter covariance rotation for a change in BField
 
       // flip the helix in time and charge; it remains unchanged geometrically

@@ -171,6 +171,7 @@ namespace KinKal {
       void coverEndDomain(TimeDir const& tdir);
       // record an extrapolation failure; always returns false
       bool extrapolationFailed(Status::status stat, const char* comment);
+      Domain const* extrapolationDomain(double time) const; // the domain containing the given time, if any (nullptr otherwise)
       auto& status() { return history_.back(); } // most recent status
       // divide a trajectory into magnetic 'domains' within which the BField can be considered constant (parameter change is within tolerance)
       // payload
@@ -1002,7 +1003,7 @@ namespace KinKal {
                 handed_off = true;
                 break;
               }
-              Domain domain(range,*midfield);
+              Domain domain(range,*midfield,bfield_.fieldGrad(midpos));
               addDomain(domain,tdir,true);
               time = tdir == TimeDir::forwards ? domain.end() : domain.begin();
             }
@@ -1035,8 +1036,8 @@ namespace KinKal {
               auto const& ktraj = fittraj_->nearestPiece(time);
               double dt = std::clamp(bfield_.rangeInTolerance(ktraj,time,xtest.dpTolerance()),config().mindtstep_,xtest.maxDtStep());
               TimeRange range = tdir == TimeDir::forwards ? TimeRange(time,time+dt) : TimeRange(time-dt,time);
-              auto domainfield = bfield_.fieldVect(ktraj.position3(range.mid()));
-              Domain domain(range,domainfield);
+              VEC3 midpos = ktraj.position3(range.mid());
+              Domain domain(range,bfield_.fieldVect(midpos),bfield_.fieldGrad(midpos));
               addDomain(domain,tdir,true);
               time = tdir == TimeDir::forwards ? domain.end() : domain.begin();
             }
@@ -1154,6 +1155,19 @@ namespace KinKal {
     domains_.insert(dptr);
   }
 
+  template<class KTRAJ> Domain const* Track<KTRAJ>::extrapolationDomain(double time) const {
+    // extrapolation adds domains at the ends, so search from the closer end
+    if(domains_.empty()) return nullptr;
+    if(time >= 0.5*((*domains_.cbegin())->begin() + (*domains_.crbegin())->end())){
+      for(auto idom = domains_.crbegin(); idom != domains_.crend(); ++idom)
+        if((*idom)->range().inRange(time)) return idom->get();
+    } else {
+      for(auto idom = domains_.cbegin(); idom != domains_.cend(); ++idom)
+        if((*idom)->range().inRange(time)) return idom->get();
+    }
+    return nullptr;
+  }
+
   template<class KTRAJ> bool Track<KTRAJ>::extrapolate(EXINGPTR const& exingptr,TimeDir const& tdir) {
     bool retval = fitStatus().usable();
     if(retval){
@@ -1161,14 +1175,16 @@ namespace KinKal {
         // make sure the time is legal
         retval = fittraj_->back().range().inRange(exingptr->time());
         if(retval){
-          auto& exmat = effects_.emplace_back(std::make_unique<KKMAT>(exingptr,*fittraj_));
-          exmat->extrapolate(*fittraj_,tdir);
+          auto exmat = std::make_unique<KKMAT>(exingptr,*fittraj_);
+          exmat->extrapolate(*fittraj_,tdir,extrapolationDomain(exingptr->time()));
+          effects_.emplace_back(std::move(exmat));
         }
       } else {
         retval = fittraj_->front().range().inRange(exingptr->time());
         if(retval){
-          auto& exmat = effects_.emplace_front(std::make_unique<KKMAT>(exingptr,*fittraj_));
-          exmat->extrapolate(*fittraj_,tdir);
+          auto exmat = std::make_unique<KKMAT>(exingptr,*fittraj_);
+          exmat->extrapolate(*fittraj_,tdir,extrapolationDomain(exingptr->time()));
+          effects_.emplace_front(std::move(exmat));
         }
       }
     }

@@ -65,7 +65,7 @@ namespace KinKal {
     double grad = gradient(position.Z());
     Grad retval;
     retval[0][0] = retval[1][1] = -0.5*grad;
-    retval[2][2] = -grad;
+    retval[2][2] = grad; // dBz/dz, consistent with fieldVect and fieldDeriv
     return retval;
   }
 

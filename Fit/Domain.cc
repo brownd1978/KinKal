@@ -2,7 +2,9 @@
 namespace KinKal {
   Domain::Domain(Domain const& rhs):
     range_(rhs.range()),
-    bnom_(rhs.bnom()){
+    bnom_(rhs.bnom()),
+    grad_(rhs.grad()),
+    hasgrad_(rhs.hasGradient()){
     }
 
   std::shared_ptr<Domain> Domain::clone(CloneContext& context) const{

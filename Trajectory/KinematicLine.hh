@@ -145,6 +145,7 @@ class KinematicLine {
     // Parameter derivatives given a change in BField.  These return null for KinematicLine
     DVEC dPardB(double time) const { return DVEC(); }
     DVEC dPardB(double time, VEC3 const& BPrime) const { return DVEC(); }
+    DPDV dPardBdB(double time) const { return DPDV(); }
     PSMAT dPardPardB(double time,VEC3 const& db) const { return ROOT::Math::SMatrixIdentity(); }
     // linear approximation
     Ray linearize(double time) const;

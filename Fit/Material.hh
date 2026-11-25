@@ -7,6 +7,7 @@
 #include "KinKal/Fit/Effect.hh"
 #include "KinKal/Detector/ElementXing.hh"
 #include "KinKal/General/TimeDir.hh"
+#include "KinKal/Fit/Domain.hh"
 #include <iostream>
 #include <stdexcept>
 #include <array>
@@ -25,7 +26,9 @@ namespace KinKal {
       void updateState(MetaIterConfig const& miconfig,bool first) override;
       void updateConfig(Config const& config) override {}
       void append(PTRAJ& fit,TimeDir tdir) override;
-      void extrapolate(PTRAJ& fit,TimeDir tdir) override;
+      void extrapolate(PTRAJ& fit,TimeDir tdir) override { extrapolate(fit,tdir,nullptr); }
+      // extrapolate, transporting the covariance through the field gradient of the given domain (if any) up to this material
+      void extrapolate(PTRAJ& fit,TimeDir tdir, Domain const* domain);
       void updateReference(PTRAJ const& ptraj, MetaIterConfig const& miconfig) override;
       Chisq chisq(Parameters const& pdata) const override { return Chisq();}
       void print(std::ostream& ost=std::cout,int detail=0) const override;
@@ -98,7 +101,7 @@ namespace KinKal {
     }
   }
 
-  template<class KTRAJ> void Material<KTRAJ>::extrapolate(PTRAJ& ptraj,TimeDir tdir) {
+  template<class KTRAJ> void Material<KTRAJ>::extrapolate(PTRAJ& ptraj,TimeDir tdir, Domain const* domain) {
   // make sure the traj can be appended
     if((tdir == TimeDir::forwards && ptraj.back().range().begin() > time()) ||
         (tdir == TimeDir::backwards && ptraj.front().range().end() < time()) )
@@ -108,7 +111,7 @@ namespace KinKal {
     if(!exingptr_->active()) return;
     auto ktrajptr = ptraj.nearestTraj(time());
     // convert parameters at this material to momentum space representation
-    auto pstate = ktrajptr->stateEstimate(time());
+    auto pstate = transportedStateEstimate(*ktrajptr,domain,time(),tdir);
     auto bnom = ktrajptr->bnom();
     // change in momentum due to the associated element Xing
     SVEC3 dmom;

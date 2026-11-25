@@ -277,6 +277,35 @@ namespace KinKal {
     return dPardMLoc(time)*g2lmat;
   }
 
+  DPDV LoopHelix::dPardBdB(double time) const {
+    // linearization of dPardB in db; columns are local field components, rotated to global at the end
+    auto xvec = localPosition(time);
+    auto mvec = localMomentum(time);
+    double br = bnom_.R();
+    DPDV jloc;
+    // magnitude change: only the local z component changes |B| to first order
+    double drad = -rad()/br;
+    jloc(rad_,2) = drad;
+    jloc(lam_,2) = -lam()/br;
+    jloc(phi0_,2) = -xvec.Z()/(br*lam());
+    jloc(cx_,2) = -sin(mvec.Phi())*drad;
+    jloc(cy_,2) = cos(mvec.Phi())*drad;
+    // direction change: rotation of the local state by BxdB = zhat x dbloc/br, linear in the local x and y components
+    auto dpds = dPardStateLoc(time);
+    for(int k=0;k<2;k++){
+      VEC3 dbloc(k==0?1.0:0.0, k==1?1.0:0.0, 0.0);
+      VEC3 BxdB = VEC3(0.0,0.0,1.0).Cross(dbloc)/br;
+      VEC3 dx = xvec.Cross(BxdB);
+      VEC3 dm = mvec.Cross(BxdB);
+      SVEC6 ds(dx.X(),dx.Y(),dx.Z(),dm.X(),dm.Y(),dm.Z());
+      DVEC dp = dpds*ds;
+      for(int i=0;i<NParams();i++) jloc(i,k) += dp[i];
+    }
+    RMAT g2lmat;
+    g2l_.GetRotationMatrix(g2lmat);
+    return jloc*g2lmat;
+  }
+
   PSMAT LoopHelix::dPardPardB(double time,VEC3 const& db) const {
     auto newbnom = bnom_ + db;
     double bfrac = bnom_.R()/newbnom.R();

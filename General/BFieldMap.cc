@@ -45,7 +45,7 @@ namespace KinKal {
      b0_(b0), b1_(b1), z0_(zg0), grad_((b1_ - b0_)/(zg1-zg0)) {
        fgrad_[0][0] = -0.5*grad_;
        fgrad_[1][1] = -0.5*grad_;
-       fgrad_[2][2] = -grad_;
+       fgrad_[2][2] = grad_; // dBz/dz; div B = 0 with the transverse terms above
      }
 
    VEC3 GradientBFieldMap::fieldVect(VEC3 const&position) const  {

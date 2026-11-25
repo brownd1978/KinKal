@@ -136,6 +136,7 @@ namespace KinKal {
       DVEC momDeriv(double time, MomBasis::Direction mdir) const; // projection of M derivatives onto direction basis
       // package the above for full (global) state
       DVEC dPardB(double time, VEC3 const& db) const; // parameter change given a change in BField vector; this includes the magnitude and direction changes
+      DPDV dPardBdB(double time) const; // linear Jacobian of dPardB: parameter change per (global) BField vector change, with the state at time fixed
       PSMAT dPardPardB(double time,VEC3 const& db) const; // Parameter covariance rotation for a change in BField
       // helix interface
       VEC3 center(double time) const; // helix center in global coordinates

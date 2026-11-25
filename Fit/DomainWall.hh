@@ -118,8 +118,10 @@ namespace KinKal {
     if((tdir == TimeDir::forwards && ptraj.back().range().begin() > time()) ||
         (tdir == TimeDir::backwards && ptraj.front().range().end() < time()) )
       throw std::invalid_argument("DomainWall: Can't extrapolate piece");
-    // sample the particle state at this domain wall
-    auto pstate = ptraj.stateEstimate(time());
+    // sample the particle state at this domain wall, transporting the covariance through the field gradient of the domain being left
+    auto pstate = tdir == TimeDir::forwards ?
+      transportedStateEstimate(ptraj.back(),prev_.get(),time(),tdir) :
+      transportedStateEstimate(ptraj.front(),next_.get(),time(),tdir);
     if( tdir == TimeDir::forwards){
       // re-intepret that as a trajectory, using the next domain's magnetic field. This gives exact continuity in position and momentum
       KTRAJ newpiece(pstate, nextDomain().bnom(),nextDomain().range());
