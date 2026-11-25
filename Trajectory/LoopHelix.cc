@@ -292,14 +292,14 @@ namespace KinKal {
     jloc(cy_,2) = cos(mvec.Phi())*drad;
     // direction change: rotation of the local state by BxdB = zhat x dbloc/br, linear in the local x and y components
     auto dpds = dPardStateLoc(time);
-    for(int k=0;k<2;k++){
+    for(size_t k=0;k<2;k++){
       VEC3 dbloc(k==0?1.0:0.0, k==1?1.0:0.0, 0.0);
       VEC3 BxdB = VEC3(0.0,0.0,1.0).Cross(dbloc)/br;
       VEC3 dx = xvec.Cross(BxdB);
       VEC3 dm = mvec.Cross(BxdB);
       SVEC6 ds(dx.X(),dx.Y(),dx.Z(),dm.X(),dm.Y(),dm.Z());
       DVEC dp = dpds*ds;
-      for(int i=0;i<NParams();i++) jloc(i,k) += dp[i];
+      for(size_t i=0;i<NParams();i++) jloc(i,k) += dp[i];
     }
     RMAT g2lmat;
     g2l_.GetRotationMatrix(g2lmat);

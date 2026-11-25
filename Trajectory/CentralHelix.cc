@@ -487,17 +487,17 @@ namespace KinKal {
     DPDV jloc;
     // magnitude change: only the local z component changes |B| to first order
     DVEC dpdbz = dPardB(time)/bnomR();
-    for(int i=0;i<NParams();i++) jloc(i,2) = dpdbz[i];
+    for(size_t i=0;i<NParams();i++) jloc(i,2) = dpdbz[i];
     // direction change: rotation of the local state by BxdB = zhat x dBloc/|B|, linear in the local x and y components
     auto xvec = localPosition(time);
     auto mvec = localMomentum(time);
     auto dpds = dPardStateLoc(time);
-    for(int k=0;k<2;k++){
+    for(size_t k=0;k<2;k++){
       VEC3 BxdB = VEC3(0.0,0.0,1.0).Cross(VEC3(k==0?1.0:0.0, k==1?1.0:0.0, 0.0))/bnomR();
       VEC3 dx = xvec.Cross(BxdB);
       VEC3 dm = mvec.Cross(BxdB);
       DVEC dp = dpds*SVEC6(dx.X(),dx.Y(),dx.Z(),dm.X(),dm.Y(),dm.Z());
-      for(int i=0;i<NParams();i++) jloc(i,k) = dp[i];
+      for(size_t i=0;i<NParams();i++) jloc(i,k) = dp[i];
     }
     RMAT g2lmat;
     g2l_.GetRotationMatrix(g2lmat);
