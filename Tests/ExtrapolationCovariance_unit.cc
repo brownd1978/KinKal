@@ -44,7 +44,7 @@ namespace {
       MOM4 mom(-60.,55.,73.,0.511);
       KTRAJ traj(pos,mom,-1,bnom,TimeRange(0,10));
       double t1 = 5.3, t2 = 4.6;
-      auto dpdb = traj.dPardBdB(t1) - traj.dPardBdB(t2);
+      DPDV dpdb = traj.dPardBdB(t1) - traj.dPardBdB(t2);
       double eps = 1e-5, maxdiff(0.0);
       for(int k=0;k<3;k++){
         VEC3 db(k==0?eps:0,k==1?eps:0,k==2?eps:0);
