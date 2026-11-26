@@ -102,6 +102,11 @@ namespace KinKal {
       double z0() const { return paramVal(z0_); }
       double tanDip() const { return paramVal(tanDip_); }
       double t0() const { return paramVal(t0_); }
+      // time at the canonical reference of this parameterization: the point of closest approach to the (local) z axis
+      double referenceTime() const { return t0(); }
+      // time at which the trajectory crosses the global z plane zpos, nearest the hint time thint.  Exact (to 1e-6 mm), iterating
+      // from the hint with the local z velocity; if the z velocity vanishes the hint is returned
+      double zTime(double zpos, double thint) const;
       // express fit results as a state vector (global coordinates)
       ParticleState state(double time) const {  return ParticleState(position4(time),momentum4(time),charge()); }
       ParticleStateEstimate stateEstimate(double time) const;

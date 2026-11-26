@@ -127,13 +127,13 @@ namespace KinKal {
       auto psvec = pstate.state() + dstate;
       ParticleStateEstimate newpstate(psvec,psvar,time(),pstate.mass(),pstate.charge());
       TimeRange range(time(),ptraj.range().end());
-      KTRAJ newpiece(newpstate, bnom, range);
+      auto newpiece = extrapolatedPiece<KTRAJ>(newpstate, bnom, range, domain);
       ptraj.append(newpiece);
     } else {
       auto psvec = pstate.state() - dstate;
       ParticleStateEstimate newpstate(psvec,psvar,time(),pstate.mass(),pstate.charge());
       TimeRange range(ptraj.range().begin(),time());
-      KTRAJ newpiece(newpstate, bnom, range);
+      auto newpiece = extrapolatedPiece<KTRAJ>(newpstate, bnom, range, domain);
       ptraj.prepend(newpiece);
     }
   }

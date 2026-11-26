@@ -110,7 +110,10 @@ namespace KinKal {
       void extend(Config const& config, HITCOL& hits, EXINGCOL& exings );
       // extrapolate the fit through the magnetic field with the given config until the given predicate is satisfied. This function requires
       // the fit be valid, otherwise the return code is false.  If successful the status, domains, and trajectory of the fit are updated
-      // Note that the actual fit itself is unchanged
+      // Note that the actual fit itself is unchanged.
+      // XTEST provides maxDt(), maxDtStep(), dpTolerance() and needsExtrapolation(ptraj,tdir).  If it also provides localReference(), and that returns true,
+      // the extrapolated pieces of trajectories that support it (LoopHelix) have t0 and phi0 referenced to their own z (LoopHelix::LocalReference)
+      // instead of z=0. Use this only when the extrapolated pieces won't be refit.
       template <class XTEST> bool extrapolate(TimeDir tdir, XTEST const& XTest);
       // extrapolate the fit through a material xing. Return value is true if the effect is added and fit updated.
       bool extrapolate(EXINGPTR const& exing,TimeDir const& tdir);
@@ -952,6 +955,8 @@ namespace KinKal {
 
   template<class KTRAJ> template <class XTEST> bool Track<KTRAJ>::extrapolate(TimeDir tdir, XTEST const& xtest) {
     bool retval = fitStatus().usable();
+    bool localref(false);
+    if constexpr (requires { xtest.localReference(); }) localref = xtest.localReference();
     if(retval){
       if(config().bfcorr_){
         // the step is clamped to [mindtstep_, maxDtStep], which needs a non-empty interval
@@ -1003,7 +1008,8 @@ namespace KinKal {
                 handed_off = true;
                 break;
               }
-              Domain domain(range,*midfield,bfield_.fieldGrad(midpos));
+              Domain domain(range,*midfield,bfield_.fieldGrad(midpos),config().xportmincos_);
+              domain.setLocalReference(localref);
               addDomain(domain,tdir,true);
               time = tdir == TimeDir::forwards ? domain.end() : domain.begin();
             }
@@ -1037,7 +1043,8 @@ namespace KinKal {
               double dt = std::clamp(bfield_.rangeInTolerance(ktraj,time,xtest.dpTolerance()),config().mindtstep_,xtest.maxDtStep());
               TimeRange range = tdir == TimeDir::forwards ? TimeRange(time,time+dt) : TimeRange(time-dt,time);
               VEC3 midpos = ktraj.position3(range.mid());
-              Domain domain(range,bfield_.fieldVect(midpos),bfield_.fieldGrad(midpos));
+              Domain domain(range,bfield_.fieldVect(midpos),bfield_.fieldGrad(midpos),config().xportmincos_);
+              domain.setLocalReference(localref);
               addDomain(domain,tdir,true);
               time = tdir == TimeDir::forwards ? domain.end() : domain.begin();
             }

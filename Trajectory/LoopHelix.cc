@@ -12,8 +12,8 @@ namespace KinKal {
     "Longitudinal Wavelength",
     "Cylinder Center X",
     "Cylinder Center Y",
-    "Azimuth at Z=0 Plane",
-    "Time at Z=0 Plane"};
+    "Azimuth at Z=Zref Plane",
+    "Time at Z=Zref Plane"};
   const vector<string> LoopHelix::paramNames_ = {
     "Radius","Lambda","CenterX","CenterY","Phi0","Time0"};
   const vector<string> LoopHelix::paramUnits_ = {
@@ -29,7 +29,7 @@ namespace KinKal {
 
   LoopHelix::LoopHelix() : mass_(0.0), charge_(0) {}
   LoopHelix::LoopHelix( VEC4 const& gpos, MOM4 const& gmom, int charge, double bnom, TimeRange const& range) : LoopHelix(gpos,gmom,charge,VEC3(0.0,0.0,bnom),range) {}
-  LoopHelix::LoopHelix( VEC4 const& gpos, MOM4 const& gmom, int charge, VEC3 const& bnom, TimeRange const& trange) : trange_(trange), mass_(gmom.M()), charge_(charge), bnom_(bnom) {
+  LoopHelix::LoopHelix( VEC4 const& gpos, MOM4 const& gmom, int charge, VEC3 const& bnom, TimeRange const& trange, double zref) : trange_(trange), mass_(gmom.M()), charge_(charge), bnom_(bnom), zref_(zref) {
     static double twopi = 2*M_PI;
     // Transform position and momentum into the system where Z is along the Bfield, which is the implicit coordinate system of the parameterization.
     // This is a pure rotation about the origin
@@ -45,8 +45,8 @@ namespace KinKal {
     param(rad_) = pt*invq;
     // longitudinal wavelength
     param(lam_) = lmom.Z()*invq;
-    // time when particle reaches local z=0
-    double zbar = lpos.Z()/lam();
+    // time when particle reaches local z=zref
+    double zbar = (lpos.Z()-zref_)/lam();
     param(t0_) = lpos.T() - zbar/omega();
     // compute winding that puts phi0 in the range -pi,pi
     double nwind = round((zbar - lmomphi)/twopi);
@@ -65,10 +65,26 @@ namespace KinKal {
     return fabs(lmom.Z())*BFieldMap::cbar()*bnom.R()>1e-6; // 0.001 micron
   }
 
+  double LoopHelix::zTime(double zpos, double thint) const {
+    static const double ztol(1e-6); // mm
+    static const unsigned maxniter(10); // converges in 1 iteration for a field along z
+    double ztime(thint);
+    for(unsigned iter=0; iter < maxniter; ++iter){
+      double dz = zpos - position3(ztime).Z();
+      if(fabs(dz) < ztol) break;
+      double vz = velocity(ztime).Z();
+      if(vz == 0.0) break;
+      ztime += dz/vz;
+    }
+    return ztime;
+  }
+
   void LoopHelix::syncPhi0(LoopHelix const& other) {
     // adjust the phi0 of this traj to agree with the reference, keeping its value (mod 2pi) the same.
     static double twopi = 2*M_PI;
-    int nloop = static_cast<int>(round( (other.phi0() - phi0())/twopi));
+    // compare at the same reference z
+    double ophi0 = other.phi0() + (zref_ - other.zref())/other.lam();
+    int nloop = static_cast<int>(round( (ophi0 - phi0())/twopi));
     if(nloop != 0) pars_.parameters()[phi0_] += nloop*twopi;
   }
 
@@ -105,6 +121,17 @@ namespace KinKal {
   LoopHelix::LoopHelix( Parameters const& pars, double mass, int charge, VEC3 const& bnom, TimeRange const& trange ) :
     trange_(trange), pars_(pars), mass_(mass), charge_(charge), bnom_(bnom) {
       setTransforms();
+    }
+
+  double LoopHelix::localZ(VEC3 const& gpos, VEC3 const& bnom) {
+    auto g2l = Rotation3D(AxisAngle(VEC3(sin(bnom.Phi()),-cos(bnom.Phi()),0.0),bnom.Theta()));
+    return g2l(gpos).Z();
+  }
+
+  LoopHelix::LoopHelix(ParticleStateEstimate const& pstate, VEC3 const& bnom, TimeRange const& range, LocalReference) :
+    LoopHelix(pstate.position4(),pstate.momentum4(),pstate.charge(),bnom,range,localZ(pstate.position3(),bnom)) {
+      PSMAT dpds = dPardState(pstate.time());
+      pars_.covariance() = ROOT::Math::Similarity(dpds,pstate.stateCovariance());
     }
 
   LoopHelix::LoopHelix(ParticleState const& pstate, VEC3 const& bnom, TimeRange const& range) :
@@ -204,7 +231,7 @@ namespace KinKal {
   VEC3 LoopHelix::localPosition(double time) const {
     double df = dphi(time);
     double phival = df + phi0();
-    return VEC3(cx() + rad()*sin(phival), cy() - rad()*cos(phival), df*lam());
+    return VEC3(cx() + rad()*sin(phival), cy() - rad()*cos(phival), df*lam() + zref_);
   }
 
   VEC3 LoopHelix::direction(double time, MomBasis::Direction mdir) const {
@@ -287,7 +314,7 @@ namespace KinKal {
     double drad = -rad()/br;
     jloc(rad_,2) = drad;
     jloc(lam_,2) = -lam()/br;
-    jloc(phi0_,2) = -xvec.Z()/(br*lam());
+    jloc(phi0_,2) = -(xvec.Z()-zref_)/(br*lam());
     jloc(cx_,2) = -sin(mvec.Phi())*drad;
     jloc(cy_,2) = cos(mvec.Phi())*drad;
     // direction change: rotation of the local state by BxdB = zhat x dbloc/br, linear in the local x and y components
@@ -318,7 +345,7 @@ namespace KinKal {
     DVEC dpdpdb_lam; dpdpdb_lam[lam_] = bfrac;
     DVEC dpdpdb_cx; dpdpdb_cx[cx_] = 1.0; dpdpdb_cx[rad_] = sphi*(1-bfrac);
     DVEC dpdpdb_cy; dpdpdb_cy[cy_] = 1.0; dpdpdb_cy[rad_] = -cphi*(1-bfrac);
-    DVEC dpdpdb_phi0; dpdpdb_phi0[phi0_] = 1.0;  dpdpdb_phi0[lam_] = -xvec.Z()*(1-1.0/bfrac)/(lam()*lam());
+    DVEC dpdpdb_phi0; dpdpdb_phi0[phi0_] = 1.0;  dpdpdb_phi0[lam_] = -(xvec.Z()-zref_)*(1-1.0/bfrac)/(lam()*lam());
     DVEC dpdpdb_t0; dpdpdb_t0[t0_] = 1.0;
     // build the matrix from these rows
     PSMAT dpdpdb;
@@ -347,7 +374,7 @@ namespace KinKal {
     double dbf  = (br - nbr)/nbr;
     retval[rad_] = rad()*dbf;
     retval[lam_] = lam()*dbf;
-    retval[phi0_] = xvec.Z()*(br -nbr)/br/lam();
+    retval[phi0_] = (xvec.Z()-zref_)*(br -nbr)/br/lam();
     retval[t0_] = 0.0;
     retval[cx_] = -sin(mvec.Phi())*retval[rad_];
     retval[cy_] = cos(mvec.Phi())*retval[rad_];
@@ -462,7 +489,7 @@ namespace KinKal {
 
   VEC3 LoopHelix::center(double time) const {
     // local transverse position is at the center.  Use the time to define the Z position
-    VEC3 cpos(cx(),cy(),dphi(time)*lam());
+    VEC3 cpos(cx(),cy(),dphi(time)*lam() + zref_);
     // transform to global coordinates
     auto gcpos = l2g_(cpos);
     return gcpos;

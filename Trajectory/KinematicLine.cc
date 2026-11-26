@@ -98,6 +98,13 @@ namespace KinKal {
   KinematicLine::KinematicLine(KinematicLine const& other, VEC3 const& bnom, double trot) : KinematicLine(other) {
   }
 
+  double KinematicLine::zTime(double zpos, double thint) const {
+    // z is linear in time, so this is exact
+    double vz = velocity(thint).Z();
+    if(vz == 0.0) return thint;
+    return thint + (zpos - position3(thint).Z())/vz;
+  }
+
   void KinematicLine::syncPhi0(KinematicLine const& other) {
 // adjust the phi0 of this traj to agree with the reference, keeping its value (mod 2pi) the same.
     static double twopi = 2*M_PI;

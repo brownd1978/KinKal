@@ -89,6 +89,11 @@ class KinematicLine {
     double z0() const { return paramVal(z0_); }
     double theta() const { return paramVal(theta_); }
     double t0() const { return paramVal(t0_); }
+    // time at the canonical reference of this parameterization: the point of closest approach to the z axis
+    double referenceTime() const { return t0(); }
+    // time at which the trajectory crosses the global z plane zpos, nearest the hint time thint.  Exact (to 1e-6 mm), iterating
+    // from the hint with the local z velocity; if the z velocity vanishes the hint is returned
+    double zTime(double zpos, double thint) const;
     double mom() const { return paramVal(mom_); }
 
     // express fit results as a state vector (global coordinates)

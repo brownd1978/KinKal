@@ -34,6 +34,7 @@ namespace KinKal {
     double domainmargin_ = std::numeric_limits<double>::max(); // ns: max time a domain may extend beyond the active range; finite confines the walk and its field sampling to range +/- margin
     unsigned minndof_ = 5; // minimum number of DOFs to continue fit
     bool bfcorr_ = true; // whether to make BFieldMap corrections in the fit
+    double xportmincos_ = 0.1; // minimum |cos(momentum,BField)| for the extrapolation covariance transport through field gradients (see Domain.hh); it is skipped below that, ie near a magnetic-mirror turning point. A value > 1 disables the transport
     bool ends_ = true; // process the passive effects at each end of the track after schedule completion
     printLevel plevel_ = none; // print level
     // schedule of meta-iterations.  These will be executed sequentially until completion or failure

@@ -124,11 +124,11 @@ namespace KinKal {
       transportedStateEstimate(ptraj.front(),next_.get(),time(),tdir);
     if( tdir == TimeDir::forwards){
       // re-intepret that as a trajectory, using the next domain's magnetic field. This gives exact continuity in position and momentum
-      KTRAJ newpiece(pstate, nextDomain().bnom(),nextDomain().range());
+      auto newpiece = extrapolatedPiece<KTRAJ>(pstate, nextDomain().bnom(),nextDomain().range(),next_.get());
       ptraj.append(newpiece);
     } else {
       // same as above, in the opposite direction
-      KTRAJ newpiece(pstate, prevDomain().bnom(),prevDomain().range());
+      auto newpiece = extrapolatedPiece<KTRAJ>(pstate, prevDomain().bnom(),prevDomain().range(),prev_.get());
       ptraj.prepend(newpiece);
     }
   }

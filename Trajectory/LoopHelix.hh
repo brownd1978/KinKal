@@ -44,12 +44,16 @@ namespace KinKal {
       // interface needed for KKTrk instantiation
       // construct from momentum, position, and particle properties.
       // This also requires the nominal BField, which can be a vector (3d) or a scalar (B along z)
-      LoopHelix(VEC4 const& pos, MOM4 const& mom, int charge, VEC3 const& bnom, TimeRange const& range=TimeRange());
+      LoopHelix(VEC4 const& pos, MOM4 const& mom, int charge, VEC3 const& bnom, TimeRange const& range=TimeRange(), double zref=0.0);
       LoopHelix(VEC4 const& pos, MOM4 const& mom, int charge, double bnom, TimeRange const& range=TimeRange()); // do I really need this?
       // construct from the particle state at a given time, plus mass and charge. Parameter covariance matrix is undefined
       explicit LoopHelix(ParticleState const& pstate, VEC3 const& bnom, TimeRange const& range=TimeRange());
       // same, including covariance information
       explicit LoopHelix(ParticleStateEstimate const& pstate, VEC3 const& bnom, TimeRange const& range=TimeRange());
+      // same, but with t0 and phi0 referenced to the local z of the state position instead of local z=0 (see zref_).  That keeps
+      // t0 and phi0 well-conditioned for pieces far from z=0 with small lambda (near a magnetic-mirror turning point)
+      struct LocalReference {};
+      LoopHelix(ParticleStateEstimate const& pstate, VEC3 const& bnom, TimeRange const& range, LocalReference);
       // can the state constructor represent this state in this field? It never refuses
       static bool constructible(ParticleState const&, VEC3 const&);
       // copy payload and adjust parameters to correspond to a different BField at a particular time
@@ -97,6 +101,11 @@ namespace KinKal {
       double cy() const { return paramVal(cy_); }
       double phi0() const { return paramVal(phi0_); }
       double t0() const { return paramVal(t0_); }
+      // time at the canonical reference of this parameterization, independent of zref: when the helix crosses local z=0
+      double referenceTime() const { return t0() - zref_/(lam()*omega()); }
+      // time at which the trajectory crosses the global z plane zpos, nearest the hint time thint.  Exact (to 1e-6 mm), iterating
+      // from the hint with the local z velocity; if the z velocity vanishes the hint is returned
+      double zTime(double zpos, double thint) const;
       // express fit results as a state vector (global coordinates)
       ParticleState state(double time) const { return ParticleState(position4(time),momentum4(time),charge()); }
       ParticleStateEstimate stateEstimate(double time) const;
@@ -118,7 +127,8 @@ namespace KinKal {
       double betaGamma() const { return pbar()/mbar(); } // relativistic betagamma
       double dphi(double t) const { return omega()*(t - t0()); }
       double phi(double t) const { return dphi(t) + phi0(); }
-      double zphi(double zpos) const { return zpos/lam() + phi0(); }
+      double zphi(double zpos) const { return (zpos-zref_)/lam() + phi0(); } // zpos is local
+      double zref() const { return zref_; } // local z where t0 and phi0 are defined
       VEC3 const& bnom(double time=0.0) const { return bnom_; }
       double bnomR() const { return bnom_.R(); }
       // flip the helix in time and charge; it remains unchanged geometrically
@@ -159,12 +169,15 @@ namespace KinKal {
       DPDV dPardMLoc(double time) const; // return the derivative of the parameters WRT the local (unrotated) momentum vector
       PSMAT dPardStateLoc(double time) const; // derivative of parameters WRT local state
       void setTransforms(); // define global to local and local to global given BNom
+      static double localZ(VEC3 const& gpos, VEC3 const& bnom); // local z of a global position
 
       TimeRange trange_;
       Parameters pars_; // parameters
       double mass_;  // in units of MeV/c^2
       int charge_; // charge in units of proton charge
       VEC3 bnom_; // nominal BField, in global coordinate system
+      double zref_ = 0.0; // reference local z position: t0 and phi0 are the time and azimuth where the helix crosses local z = zref_.
+      // It is 0 (the origin) except for pieces constructed with LocalReference
       ROOT::Math::Rotation3D l2g_, g2l_; // rotations between local and global coordinates
       const static std::vector<std::string> paramTitles_;
       const static std::vector<std::string> paramNames_;

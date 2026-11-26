@@ -14,7 +14,7 @@ namespace KinKal {
     "xy plane curvature of the track #omega",
     "Distance from the closest approach to the origin z_{0}",
     "Tangent of the track dip angle in the #rho - z projection tan#lambda",
-    "Time at Z=0 Plane"};
+    "Time at closest approach t_{0}"};
   const vector<string> CentralHelix::paramNames_ = {
     "D0","Phi0","Omega","Z0","TanDip","Time0"};
   const vector<string> CentralHelix::paramUnits_ = {
@@ -135,6 +135,20 @@ namespace KinKal {
       PSMAT dpds = dPardState(pstate.time());
       pars_.covariance() = ROOT::Math::Similarity(dpds,pstate.stateCovariance());
     }
+
+  double CentralHelix::zTime(double zpos, double thint) const {
+    static const double ztol(1e-6); // mm
+    static const unsigned maxniter(10); // converges in 1 iteration for a field along z
+    double ztime(thint);
+    for(unsigned iter=0; iter < maxniter; ++iter){
+      double dz = zpos - position3(ztime).Z();
+      if(fabs(dz) < ztol) break;
+      double vz = velocity(ztime).Z();
+      if(vz == 0.0) break;
+      ztime += dz/vz;
+    }
+    return ztime;
+  }
 
   void CentralHelix::syncPhi0(CentralHelix const& other) {
     // adjust the phi0 of this traj to agree with the reference, keeping its value (mod 2pi) the same.

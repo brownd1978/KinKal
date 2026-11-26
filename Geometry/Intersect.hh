@@ -135,6 +135,22 @@ namespace KinKal {
     inter.hascov_ = true;
     inter.inbfrac_ = boundsFraction(surf,inter,tol);
   }
+  // the same, projecting the position covariance of a particle state estimate at the intersection time (ie one transported separately
+  // from the trajectory, see ParticleStateEstimate::transport).  The projection is along the state momentum direction
+  inline void fillPlaneCovariance(ParticleStateEstimate const& pse, Surface const& surf, Intersection& inter, double tol, double dirtol=1.0e-10) {
+    inter.pcov_ = PMAT();
+    inter.hascov_ = false;
+    inter.inbfrac_ = 0.0;
+    if(!inter.onsurface_) return;
+    auto tplane = surf.tangentPlane(inter.pos_);
+    inter.norm_ = tplane.normal();
+    inter.udir_ = tplane.uDirection();
+    inter.vdir_ = tplane.vDirection();
+    if(fabs(inter.norm_.Dot(pse.momentum3().Unit())) < dirtol) return;
+    inter.pcov_ = pse.planeCovariance(inter.norm_,inter.udir_,inter.vdir_,dirtol);
+    inter.hascov_ = true;
+    inter.inbfrac_ = boundsFraction(surf,inter,tol);
+  }
   //
   // generic intersection implementation based on stepping across the surface within a given range in the given time direction.
   // This and the other internal implementations below don't project the covariance; that is done by the intersect functions on request

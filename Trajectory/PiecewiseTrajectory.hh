@@ -31,7 +31,9 @@ namespace KinKal {
       double speed(double time) const { return nearestPiece(time).speed(time); }
       VEC3 direction(double time, MomBasis::Direction mdir=MomBasis::momdir_) const { return nearestPiece(time).direction(time,mdir); }
       VEC3 const& bnom(double time) const { return nearestPiece(time).bnom(time); }
-      double t0() const;
+      double t0() const; // self-consistent reference time (see KTRAJ::referenceTime)
+      // time at which the trajectory crosses the global z plane zpos, starting the search from the piece nearest thint
+      double zTime(double zpos, double thint) const;
       TimeRange range() const { if(pieces_.size() > 0) return TimeRange(pieces_.front()->range().begin(),pieces_.back()->range().end()); else return TimeRange(); }
       void setRange(TimeRange const& trange, bool trim=false);
       // construct without any content.  Any functions except append or prepend will throw in this state
@@ -242,12 +244,13 @@ namespace KinKal {
   }
 
   template <class KTRAJ> double PiecewiseTrajectory<KTRAJ>::t0() const {
-  // find the maximally self-consistent t0. This is NOT guaranteed to be in range or unique.
+  // find the maximally self-consistent t0, using the reference time of each piece (which, for LoopHelix, is independent of a
+  // local reference).  This is NOT guaranteed to be in range or unique.
     if(pieces_.empty())throw std::length_error("Empty PiecewiseTrajectory!");
     // first try using the traj itself to find the right piece. This works for most cases. Start with the earliest time.
-    double t0 = pieces_.front()->t0();
+    double t0 = pieces_.front()->referenceTime();
     // if the front piece t0 precedes its range the search will fail. In this case try from the back
-    if(t0 < pieces_.front()->range().begin()) t0 = pieces_.back()->t0();
+    if(t0 < pieces_.front()->range().begin()) t0 = pieces_.back()->referenceTime();
     // Check for the same problem at the back; in that case, start with the midpoint
     if(t0 > pieces_.back()->range().end())t0 = this->range().mid();
     auto index = nearestIndex(t0);
@@ -256,7 +259,7 @@ namespace KinKal {
     static const unsigned maxniter(10); // almost all trajs converge in at most 2 iterations
     while(static_cast<int>(index) != oldindex && niter < maxniter){
       ++niter;
-      t0 = pieces_[index]->t0();
+      t0 = pieces_[index]->referenceTime();
       oldindex = index;
       index = nearestIndex(t0);
     }
@@ -264,14 +267,30 @@ namespace KinKal {
       // no self-consistent segment found. Find the segment with t0 closest to its range
       double mindt = std::numeric_limits<double>::max();
       for(auto const& piece :pieces_ ){
-        double dt = piece->range().minTimeTo(piece->t0());
+        double dt = piece->range().minTimeTo(piece->referenceTime());
         if(dt < mindt){
           mindt = dt;
-          t0 = piece->t0();
+          t0 = piece->referenceTime();
         }
       }
     }
     return t0;
+  }
+
+  template <class KTRAJ> double PiecewiseTrajectory<KTRAJ>::zTime(double zpos, double thint) const {
+    if(pieces_.empty())throw std::length_error("Empty PiecewiseTrajectory!");
+    double ztime(thint);
+    auto zindex = nearestIndex(ztime);
+    size_t oldzindex;
+    unsigned ntries(0);
+    static const unsigned maxntries(100);// this usually converges in 1 iteration, but it can oscillate with bad fits
+    do {
+      oldzindex = zindex;
+      ztime = pieces_[zindex]->zTime(zpos,ztime);
+      zindex = nearestIndex(ztime);
+      ++ntries;
+    } while (ntries < maxntries && zindex != oldzindex);
+    return ztime;
   }
 
   template <class KTRAJ> void PiecewiseTrajectory<KTRAJ>::print(std::ostream& ost, int detail) const {

@@ -12,6 +12,7 @@ namespace KinKal {
       << " domain margin (ns) " << kkconfig.domainmargin_
       << " min NDOF " << kkconfig.minndof_
       << " BField correction " << kkconfig.bfcorr_
+      << " gradient transport min |cos| " << kkconfig.xportmincos_
       << " with " << kkconfig.schedule().size()
       << " Meta-iterations:" << std::endl;
     for(auto const& miconfig : kkconfig.schedule() ) {
