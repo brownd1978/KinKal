@@ -357,7 +357,7 @@ namespace {
     ROOT::Math::CholeskyDecomp<double,NParams()> chol(seed.params().covariance());
     PSMAT lmat; check(chol.getL(lmat), name + " mirror Cholesky decomposition");
     TRandom3 rng(29);
-    double sx(0),sy(0),sxx(0),syy(0),sxy(0); int nsample(0);
+    double sx(0),sy(0),sxx(0),syy(0); int nsample(0);
     for(int isample=0;isample<1000;isample++){
       DVEC gaus; for(size_t ipar=0;ipar<NParams();ipar++) gaus[ipar] = rng.Gaus();
       KTRAJ sample(seed);
@@ -368,7 +368,7 @@ namespace {
       auto xs = ptraj.position3(mirrorCrossing(ptraj,zcross));
       if(fabs(xs.Z()-zcross) > 1e-3) continue;
       double dx = xs.X()-xcross.X(), dy = xs.Y()-xcross.Y();
-      sx += dx; sy += dy; sxx += dx*dx; syy += dy*dy; sxy += dx*dy; ++nsample;
+      sx += dx; sy += dy; sxx += dx*dx; syy += dy*dy; ++nsample;
     }
     double mx = sx/nsample, my = sy/nsample;
     double sigx = sqrt(sxx/nsample-mx*mx), sigy = sqrt(syy/nsample-my*my);
